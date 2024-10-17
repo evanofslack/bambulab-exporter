@@ -254,7 +254,9 @@ func (e *Exporter) recordPrint(p mqtt.Print) {
 	if percent != nil && *percent == 100 && e.lastPercent != 100 {
 	    e.metrics.printsTotal.Inc()
 	}
-	e.lastPercent = *percent
+	if percent != nil {
+        e.lastPercent = *percent
+	}
 }
 
 func (e *Exporter) recordWifi(p mqtt.Print) {
