@@ -1,0 +1,14 @@
+services:
+  bambu-exporter:
+    container_name: bambu-exporter
+    build: .
+    ports:
+      - 9091:${EXPORTER_HTTP_PORT}
+    restart: unless-stopped
+    environment:
+      HTTP_PORT: ${EXPORTER_HTTP_PORT}
+      LOG_LEVEL: ${EXPORTER_LOG_LEVEL}
+      BAMBU_ENDPOINT: ${BAMBU_ENDPOINT}
+      BAMBU_DEVICE_ID: ${BAMBU_DEVICE_ID}
+      BAMBU_USERNAME: ${BAMBU_USERNAME}
+      BAMBU_PASSWORD: ${BAMBU_PASSWORD}
