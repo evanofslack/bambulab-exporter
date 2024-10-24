@@ -10,27 +10,28 @@ const (
 
 type metrics struct {
 	amsEnabled             prom.Gauge
+	amsPowered             prom.Gauge
 	amsFilamentRemain      *prom.GaugeVec
-	amsHumid               prom.Gauge
-	amsTemp                prom.Gauge
+	amsHumid               *prom.GaugeVec
+	amsTemp                *prom.GaugeVec
 	cameraEnabled          prom.Gauge
 	cameraTimelapseEnabled prom.Gauge
 	chamberLight           prom.Gauge
 	fanSpeed               *prom.GaugeVec
 	// filamentWeightTotal    *prom.CounterVec
-	gcodeState             *prom.GaugeVec
-	layerNumber            prom.Gauge
-	layerTarget            prom.Gauge
-	nozzleDiameter         prom.Gauge
-	nozzleSpeedLevel       prom.Gauge
-	nozzleSpeedMag         prom.Gauge
-	nozzleTargetTemp       prom.Gauge
-	nozzleTemp             prom.Gauge
-	nozzleType             *prom.GaugeVec
-	printPercent           *prom.GaugeVec
-	printTimeRemain        *prom.GaugeVec
-	printsTotal            prom.Counter
-	wifiSignal             prom.Gauge
+	gcodeState       *prom.GaugeVec
+	layerNumber      prom.Gauge
+	layerTarget      prom.Gauge
+	nozzleDiameter   prom.Gauge
+	nozzleSpeedLevel *prom.GaugeVec
+	nozzleSpeedMag   prom.Gauge
+	nozzleTargetTemp prom.Gauge
+	nozzleTemp       prom.Gauge
+	nozzleType       *prom.GaugeVec
+	printPercent     *prom.GaugeVec
+	printTimeRemain  *prom.GaugeVec
+	printsTotal      *prom.CounterVec
+	wifiSignal       prom.Gauge
 }
 
 func newMetrics(deviceId string) *metrics {
@@ -42,6 +43,12 @@ func newMetrics(deviceId string) *metrics {
 				Name:        "ams_enabled_state",
 				ConstLabels: constLabels,
 			}),
+		amsPowered: prom.NewGauge(
+			prom.GaugeOpts{
+				Namespace:   namespace,
+				Name:        "ams_powered_state",
+				ConstLabels: constLabels,
+			}),
 		amsFilamentRemain: prom.NewGaugeVec(
 			prom.GaugeOpts{
 				Namespace:   namespace,
@@ -50,18 +57,22 @@ func newMetrics(deviceId string) *metrics {
 			},
 			[]string{"id", "material", "color"},
 		),
-		amsHumid: prom.NewGauge(
+		amsHumid: prom.NewGaugeVec(
 			prom.GaugeOpts{
 				Namespace:   namespace,
 				Name:        "ams_humidity",
 				ConstLabels: constLabels,
-			}),
-		amsTemp: prom.NewGauge(
+			},
+			[]string{"unit"},
+		),
+		amsTemp: prom.NewGaugeVec(
 			prom.GaugeOpts{
 				Namespace:   namespace,
 				Name:        "ams_temperature",
 				ConstLabels: constLabels,
-			}),
+			},
+			[]string{"unit"},
+		),
 		cameraEnabled: prom.NewGauge(
 			prom.GaugeOpts{
 				Namespace:   namespace,
@@ -122,12 +133,14 @@ func newMetrics(deviceId string) *metrics {
 				Name:        "nozzle_diameter",
 				ConstLabels: constLabels,
 			}),
-		nozzleSpeedLevel: prom.NewGauge(
+		nozzleSpeedLevel: prom.NewGaugeVec(
 			prom.GaugeOpts{
 				Namespace:   namespace,
 				Name:        "nozzle_speed_level",
 				ConstLabels: constLabels,
-			}),
+			},
+			[]string{"level"},
+		),
 		nozzleSpeedMag: prom.NewGauge(
 			prom.GaugeOpts{
 				Namespace:   namespace,
@@ -171,12 +184,14 @@ func newMetrics(deviceId string) *metrics {
 			},
 			[]string{"model"},
 		),
-		printsTotal: prom.NewCounter(
+		printsTotal: prom.NewCounterVec(
 			prom.CounterOpts{
 				Namespace:   namespace,
-				Name:        "print_completed_total",
+				Name:        "prints_total",
 				ConstLabels: constLabels,
-			}),
+			},
+			[]string{"result"},
+			),
 		wifiSignal: prom.NewGauge(
 			prom.GaugeOpts{
 				Namespace:   namespace,

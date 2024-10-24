@@ -4,15 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	prom "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	monitor "github.com/evanofslack/bambulab-client/monitor"
-	mqtt "github.com/evanofslack/bambulab-client/mqtt"
 )
 
 const (
@@ -26,7 +23,6 @@ type Exporter struct {
 	metrics  *metrics
 	file     string
 	server   *http.Server
-	lastPercent int
 }
 
 func New(mon *monitor.Monitor, deviceId string) (*Exporter, error) {
@@ -42,17 +38,8 @@ func New(mon *monitor.Monitor, deviceId string) (*Exporter, error) {
 }
 
 func (e *Exporter) Start(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-e.mon.Update:
-			msg := e.mon.State
-			if msg != nil && msg.Print != nil {
-				e.record(*msg.Print)
-			}
-		}
-	}
+	go e.handleEvent(ctx)
+	go e.handleUpdate(ctx)
 }
 
 func (e *Exporter) Serve(port string) error {
@@ -74,6 +61,7 @@ func (e *Exporter) Close() error {
 
 func (e *Exporter) register() {
 	e.registry.MustRegister(e.metrics.amsEnabled)
+	e.registry.MustRegister(e.metrics.amsPowered)
 	e.registry.MustRegister(e.metrics.amsFilamentRemain)
 	e.registry.MustRegister(e.metrics.amsHumid)
 	e.registry.MustRegister(e.metrics.amsTemp)
@@ -97,173 +85,166 @@ func (e *Exporter) register() {
 	e.registry.MustRegister(e.metrics.wifiSignal)
 }
 
-// Get latest state and update prom metrics
-func (e *Exporter) record(p mqtt.Print) {
-	// First determine the name of the file printing
-	if file := p.GcodeFile; file != nil {
-		e.file = *file
+func (e *Exporter) handleEvent(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-e.mon.PrintStarted:
+			e.metrics.printsTotal.WithLabelValues("start").Inc()
+		case <-e.mon.PrintFinished:
+			e.metrics.printsTotal.WithLabelValues("finish").Inc()
+		case <-e.mon.PrintCancelled:
+			e.metrics.printsTotal.WithLabelValues("cancel").Inc()
+		case <-e.mon.PrintFailed:
+			e.metrics.printsTotal.WithLabelValues("fail").Inc()
+		}
 	}
-	e.recordAms(p.Ams)
-	e.recordCamera(p.Ipcam)
-	e.recordsLights(p.LightsReport)
-	e.recordFans(p)
-	e.recordGcode(p)
-	e.recordLayer(p)
-	e.recordNozzle(p)
-	e.recordPrint(p)
-	e.recordWifi(p)
 }
 
-func (e *Exporter) recordAms(a *mqtt.Ams) {
-	if a == nil {
-		return
+func (e *Exporter) handleUpdate(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-e.mon.Update:
+			state := e.mon.CurrentState()
+			e.record(state)
+		}
 	}
-	if enabled := a.PowerOnFlag; enabled != nil {
-		if *enabled {
+}
+
+// Get latest state and update prom metrics
+func (e *Exporter) record(s monitor.State) {
+	// First determine the name of the file printing
+	if file, err := s.Gcode.File.Take(); err != nil {
+		e.file = file
+	}
+	e.recordAms(s.Ams)
+	e.recordCamera(s.Camera)
+	e.recordsLights(s.Lights)
+	e.recordFans(s.Fans)
+	e.recordGcode(s.Gcode)
+	e.recordNozzle(s.Nozzle)
+	e.recordSpeed(s.Speed)
+	e.recordPrint(s.CurrentPrint)
+	e.recordWifi(s)
+}
+
+func (e *Exporter) recordAms(a monitor.Ams) {
+	a.Enabled.IfSome(func(v bool) {
+		if v {
 			e.metrics.amsEnabled.Set(1)
 		} else {
 			e.metrics.amsEnabled.Set(0)
 		}
-	}
-	if a.Ams != nil && len(*a.Ams) > 0 {
-		innerSlice := *a.Ams
-		inner := innerSlice[0]
-		if humid := inner.Humidity; humid != nil {
-			if n, err := strconv.ParseFloat(*humid, 64); err == nil {
-				e.metrics.amsHumid.Set(n)
-			}
+	})
+	a.Powered.IfSome(func(v bool) {
+		if v {
+			e.metrics.amsPowered.Set(1)
+		} else {
+			e.metrics.amsPowered.Set(0)
 		}
-		if temp := inner.Temp; temp != nil {
-			if n, err := strconv.ParseFloat(*temp, 64); err == nil {
-				e.metrics.amsTemp.Set(n)
-			}
-		}
+	})
+	for i, unit := range a.Units {
+		unit.Humidity.IfSome(func(v float64) {
+			e.metrics.amsHumid.WithLabelValues(fmt.Sprintf("%d", i)).Set(v)
+		})
+		unit.Temperature.IfSome(func(v float64) {
+			e.metrics.amsTemp.WithLabelValues(fmt.Sprintf("%d", i)).Set(v)
+		})
 	}
 }
 
-func (e *Exporter) recordCamera(cam *mqtt.Ipcam) {
-	if cam == nil {
-		return
-	}
-	if record := cam.IpcamRecord; record != nil {
-		if strings.ToLower(*record) == "enable" {
+func (e *Exporter) recordCamera(cam monitor.Camera) {
+	cam.Recording.IfSome(func(v bool) {
+		if v {
 			e.metrics.cameraEnabled.Set(1)
 		} else {
 			e.metrics.cameraEnabled.Set(0)
 		}
-	}
-	if timelapse := cam.Timelapse; timelapse != nil {
-		if strings.ToLower(*timelapse) == "enable" {
+	})
+	cam.Timelapse.IfSome(func(v bool) {
+		if v {
 			e.metrics.cameraTimelapseEnabled.Set(1)
 		} else {
 			e.metrics.cameraTimelapseEnabled.Set(0)
 		}
-	}
+	})
 }
 
-func (e *Exporter) recordsLights(lights *[]mqtt.LightsReport) {
-	if lights == nil {
-		return
-	}
-	if len(*lights) == 0 {
-		return
-	}
-	for _, light := range *lights {
-		if mode, node := light.Mode, light.Node; mode != nil && node != nil {
-			if strings.ToLower(*node) == "chamber_light" {
-				if strings.ToLower(*mode) == "on" {
-					e.metrics.chamberLight.Set(1)
-				} else {
-					e.metrics.chamberLight.Set(1)
-				}
-			}
+func (e *Exporter) recordsLights(lights monitor.Lights) {
+	lights.Chamber.IfSome(func(v bool) {
+		if v {
+			e.metrics.chamberLight.Set(1)
+		} else {
+			e.metrics.chamberLight.Set(0)
 		}
-	}
+	})
 }
 
-func (e *Exporter) recordFans(p mqtt.Print) {
-	if aux := p.BigFan1Speed; aux != nil {
-		if n, err := strconv.ParseFloat(*aux, 64); err == nil {
-			e.metrics.fanSpeed.WithLabelValues("auxiliary").Set(n)
-		}
-	}
-	if chamber := p.BigFan2Speed; chamber != nil {
-		if n, err := strconv.ParseFloat(*chamber, 64); err == nil {
-			e.metrics.fanSpeed.WithLabelValues("chamber").Set(n)
-		}
-	}
-	if part := p.CoolingFanSpeed; part != nil {
-		if n, err := strconv.ParseFloat(*part, 64); err == nil {
-			e.metrics.fanSpeed.WithLabelValues("part").Set(n)
-		}
-	}
-	if hotend := p.HeatbreakFanSpeed; hotend != nil {
-		if n, err := strconv.ParseFloat(*hotend, 64); err == nil {
-			e.metrics.fanSpeed.WithLabelValues("hotend").Set(n)
-		}
-	}
+func (e *Exporter) recordFans(fans monitor.Fans) {
+	fans.Auxilliary.IfSome(func(v float64) {
+		e.metrics.fanSpeed.WithLabelValues("auxiliary").Set(v)
+	})
+	fans.Chamber.IfSome(func(v float64) {
+		e.metrics.fanSpeed.WithLabelValues("chamber").Set(v)
+	})
+	fans.Part.IfSome(func(v float64) {
+		e.metrics.fanSpeed.WithLabelValues("part").Set(v)
+	})
+	fans.Hotend.IfSome(func(v float64) {
+		e.metrics.fanSpeed.WithLabelValues("hotend").Set(v)
+	})
 }
 
-func (e *Exporter) recordGcode(p mqtt.Print) {
-	if state := p.GcodeState; state != nil {
-		e.metrics.gcodeState.WithLabelValues(*state).Set(1)
-	}
+func (e *Exporter) recordGcode(gcode monitor.Gcode) {
+	gcode.State.IfSome(func(v string) {
+		e.metrics.gcodeState.WithLabelValues(v).Set(1)
+	})
 }
 
-func (e *Exporter) recordLayer(p mqtt.Print) {
-	if layer := p.LayerNum; layer != nil {
-		e.metrics.layerNumber.Set(float64(*layer))
-	}
-	if target := p.TotalLayerNum; target != nil {
-		e.metrics.layerTarget.Set(float64(*target))
-	}
+func (e *Exporter) recordNozzle(nozzle monitor.Nozzle) {
+	nozzle.Diameter.IfSome(func(v float64) {
+		e.metrics.nozzleDiameter.Set(v)
+	})
+	nozzle.Temperature.IfSome(func(v float64) {
+		e.metrics.nozzleTemp.Set(v)
+	})
+	nozzle.TemperatureTarget.IfSome(func(v int) {
+		e.metrics.nozzleTargetTemp.Set(float64(v))
+	})
+	nozzle.Type.IfSome(func(v string) {
+		e.metrics.nozzleType.WithLabelValues(v).Set(1)
+	})
 }
 
-func (e *Exporter) recordNozzle(p mqtt.Print) {
-	if dia := p.NozzleDiameter; dia != nil {
-		if n, err := strconv.ParseFloat(*dia, 64); err == nil {
-			e.metrics.nozzleDiameter.Set(n)
-		}
-	}
-	if lvl := p.SpdLvl; lvl != nil {
-		e.metrics.nozzleSpeedLevel.Set(float64(*lvl))
-	}
-	if mag := p.SpdMag; mag != nil {
-		e.metrics.nozzleSpeedMag.Set(float64(*mag))
-	}
-	if temp := p.NozzleTemper; temp != nil {
-		e.metrics.nozzleTemp.Set(*temp)
-	}
-	if target := p.NozzleTargetTemper; target != nil {
-		e.metrics.nozzleTargetTemp.Set(float64(*target))
-	}
-	if ty := p.NozzleType; ty != nil {
-		e.metrics.nozzleType.WithLabelValues(*ty).Set(1)
-	}
+func (e *Exporter) recordSpeed(speed monitor.Speed) {
+	speed.Magnitude.IfSome(func(v int) {
+		e.metrics.nozzleSpeedMag.Set(float64(v))
+	})
+	speed.LevelName.IfSome(func(v string) {
+		e.metrics.nozzleSpeedLevel.WithLabelValues(v).Set(1)
+	})
 }
 
-func (e *Exporter) recordPrint(p mqtt.Print) {
-	percent := p.McPercent
-	if percent != nil {
-		e.metrics.printPercent.WithLabelValues(e.file).Set(float64(*percent))
-	}
-	if remain := p.McRemainingTime; remain != nil {
-		e.metrics.printTimeRemain.WithLabelValues(e.file).Set(float64(*remain))
-	}
-	// Did we just complete a print?
-	if percent != nil && *percent == 100 && e.lastPercent != 100 {
-	    e.metrics.printsTotal.Inc()
-	}
-	if percent != nil {
-        e.lastPercent = *percent
-	}
+func (e *Exporter) recordPrint(curr monitor.CurrentPrint) {
+	curr.LayerNumber.IfSome(func(v int) {
+		e.metrics.layerNumber.Set(float64(v))
+	})
+	curr.LayerNumberTarget.IfSome(func(v int) {
+		e.metrics.layerTarget.Set(float64(v))
+	})
+	curr.Percent.IfSome(func(v int) {
+		e.metrics.printPercent.WithLabelValues(e.file).Set(float64(v))
+	})
+	curr.TimeRemaining.IfSome(func(v int) {
+		e.metrics.printTimeRemain.WithLabelValues(e.file).Set(float64(v))
+	})
 }
 
-func (e *Exporter) recordWifi(p mqtt.Print) {
-	if wifi := p.WifiSignal; wifi != nil {
-		w := strings.TrimSuffix(*wifi, "dBm")
-		if n, err := strconv.ParseFloat(w, 64); err == nil {
-			e.metrics.wifiSignal.Set(n)
-		}
-	}
+func (e *Exporter) recordWifi(s monitor.State) {
+	s.Wifi.IfSome(func(v float64) {
+		e.metrics.wifiSignal.Set(v)
+	})
 }

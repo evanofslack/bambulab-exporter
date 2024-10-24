@@ -38,6 +38,8 @@ func main() {
 
 	// Chan to recieve messages on
 	msgs := make(chan mqtt.Message)
+	// uncomment to debug raw mqtt messages
+	// go printMsgs(ctx, msgs)
 
 	// Subscribe for info updates
 	fmt.Println("subscribing")
@@ -113,22 +115,6 @@ func printMsgs(ctx context.Context, msgs chan mqtt.Message) {
 		case msg := <-msgs:
 			fmt.Printf("got raw msg:\n")
 			b, err := json.MarshalIndent(msg, "", "  ")
-			if err != nil {
-				fmt.Println(err)
-			}
-			fmt.Println(string(b))
-		}
-	}
-}
-
-func printMonitor(ctx context.Context, mon *monitor.Monitor) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-mon.Update:
-			fmt.Println("got state update:")
-			b, err := json.MarshalIndent(mon.State, "", "  ")
 			if err != nil {
 				fmt.Println(err)
 			}
