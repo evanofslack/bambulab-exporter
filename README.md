@@ -24,7 +24,7 @@ curl -X GET https://api.bambulab.com/v1/iot-service/api/user/project -H "Authori
 ```
 In the returned json, look for `user_id` entry which is a number, then your user-id is just the prefix `u_` followed by that number. This should be provided as `BAMBU_USERNAME` env var.
 
-### Local
+#### Local
 
 If you printer is running in local mode, `BAMBU_ENDPOINT` will be the printer's IP address, `BAMBU_USERNAME` is `bblp` by default, and `BAMBU_PASSWORD` is printer password (found on printer under network settings). In both modes `BAMBU_DEVICE_ID` is your printer's serial number. 
 
@@ -119,3 +119,7 @@ bambulab_prints_total{device="01P09C461602411",result="finish"} 1
 # TYPE bambulab_wifi_signal gauge
 bambulab_wifi_signal{device="01P09C461602411"} -63
 ```
+
+## Compatibility
+
+I have only tested this with my P1S connected to bambulab cloud. It should work for local setups and other printers too. This exporter uses the [bambulab-client](https://github.com/evanofslack/bambulab-client) for mqtt communication and message parsing. 
