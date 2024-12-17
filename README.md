@@ -2,11 +2,13 @@
 
 Prometheus exporter for [bambulab](https://bambulab.com) 3D printers
 
-## Setup
+## Getting Started
 
 You can run from a prebuilt docker container `evanofslack/bambulab-exporter:latest`
 
-#### Credentials
+### Credentials
+
+#### Cloud
 
 If connecting to bambulab cloud, you will need to know your user-id (`uid`) and access token. For more information about see [this](https://github.com/Doridian/OpenBambuAPI/blob/main/cloud-http.md):
 
@@ -14,11 +16,17 @@ For a one liner to get your access token (substitute in your bambulab cloud user
 ```bash
 curl -v -X POST -H 'Content-Type: application/json' -d '{"account":"YOUR_USER_NAME","password":"YOUR_PASSWORD"}' https://bambulab.com/api/sign-in/form 2>&1 | grep token= | awk '{print$3}'
 ```
+This should be provided as `BAMBU_PASSWORD`.
+
 Then to obtain your user-id:
 ```bash
 curl -X GET https://api.bambulab.com/v1/iot-service/api/user/project -H "Authorization: Bearer YOUR_TOKEN"
 ```
-In the returned json, look for `user_id` entry which is a number, then your user-id is just the prefix `u_` followed by that number.
+In the returned json, look for `user_id` entry which is a number, then your user-id is just the prefix `u_` followed by that number. This should be provided as `BAMBU_USERNAME` env var.
+
+### Local
+
+If you printer is running in local mode, `BAMBU_ENDPOINT` will be the printer's IP address, `BAMBU_USERNAME` is `bblp` by default, and `BAMBU_PASSWORD` is printer password (found on printer under network settings). In both modes `BAMBU_DEVICE_ID` is your printer's serial number. 
 
 #### Container
 
@@ -33,10 +41,10 @@ services:
     environment:
       HTTP_PORT:"9091" # port metrics server served from
       LOG_LEVEL:"info" # exporter logs, info or debug
-      BAMBU_ENDPOINT:"us.mqtt.bambulab.com" # connect to bambulab cloud mqtt server (can be printer ip address if running in local mode)
       BAMBU_DEVICE_ID:"serial_number" # serial number of printer
-      BAMBU_USERNAME:"u_0000000" # bambulab user-id
-      BAMBU_PASSWORD:"token" # bambulab access token
+      BAMBU_ENDPOINT:"us.mqtt.bambulab.com" # connect to bambulab cloud mqtt server (printer ip address for local mode)
+      BAMBU_USERNAME:"u_0000000" # bambulab user-id (bblp for local mode)
+      BAMBU_PASSWORD:"token" # bambulab access token (printer code for local mode)
 ```
 
 ## Metrics
