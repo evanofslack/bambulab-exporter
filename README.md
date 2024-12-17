@@ -8,9 +8,9 @@ You can run from a prebuilt docker container `evanofslack/bambulab-exporter:late
 
 #### Credentials
 
-If connecting to bambulab cloud, you will need to know your user-id and api key. For more information about see [this](https://github.com/Doridian/OpenBambuAPI/blob/main/cloud-http.md):
+If connecting to bambulab cloud, you will need to know your user-id (`uid`) and access token. For more information about see [this](https://github.com/Doridian/OpenBambuAPI/blob/main/cloud-http.md):
 
-For a one liner to get your api key (substitute in your bambulab cloud username and password):
+For a one liner to get your access token (substitute in your bambulab cloud username and password):
 ```bash
 curl -v -X POST -H 'Content-Type: application/json' -d '{"account":"YOUR_USER_NAME","password":"YOUR_PASSWORD"}' https://bambulab.com/api/sign-in/form 2>&1 | grep token= | awk '{print$3}'
 ```
@@ -18,7 +18,7 @@ Then to obtain your user-id:
 ```bash
 curl -X GET https://api.bambulab.com/v1/iot-service/api/user/project -H "Authorization: Bearer YOUR_TOKEN_HERE"
 ```
-This will return a number, where your user-id is just the prefix `u_` before the number.
+In the returned json, look for `user_id` entry which is a number, then your user-id is just the prefix `u_` followed by that number.
 
 #### Container
 
