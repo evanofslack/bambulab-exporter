@@ -16,7 +16,7 @@ curl -v -X POST -H 'Content-Type: application/json' -d '{"account":"YOUR_USER_NA
 ```
 Then to obtain your user-id:
 ```bash
-curl -X GET https://api.bambulab.com/v1/iot-service/api/user/project -H "Authorization: Bearer YOUR_TOKEN_HERE"
+curl -X GET https://api.bambulab.com/v1/iot-service/api/user/project -H "Authorization: Bearer YOUR_TOKEN"
 ```
 In the returned json, look for `user_id` entry which is a number, then your user-id is just the prefix `u_` followed by that number.
 
@@ -29,14 +29,14 @@ services:
     container_name: bambulab-exporter
     restart: unless-stopped
     ports:
-      - 9091:${EXPORTER_HTTP_PORT}
+      - 9091:9091
     environment:
       HTTP_PORT:"9091" # port metrics server served from
       LOG_LEVEL:"info" # exporter logs, info or debug
       BAMBU_ENDPOINT:"us.mqtt.bambulab.com" # connect to bambulab cloud mqtt server (can be printer ip address if running in local mode)
       BAMBU_DEVICE_ID:"serial_number" # serial number of printer
       BAMBU_USERNAME:"u_0000000" # bambulab user-id
-      BAMBU_PASSWORD:"key" # bambulab api key
+      BAMBU_PASSWORD:"token" # bambulab access token
 ```
 
 ## Metrics
